@@ -6,19 +6,26 @@
 * 两位L大库里都删除了某软件，作为搬运工，passwall的依赖一并找齐了
 
 
+
 - [passwall依赖库下载链接，注意！在openwrt或者lean源码下编译passwall，要下载此依赖库](https://github.com/kenzok8/small.git)
  
 
+
 1、 lede/package$下运行 或者openwrt/package$下运行
+
 
 ```bash
  git clone https://github.com/kenzok8/openwrt-packages.git
 ```
+
  2、 或者添加下面代码到 openwrt 或lede源码根目录feeds.conf.default文件
+ 
 ```bash
  src-git kenzo https://github.com/kenzok8/openwrt-packages
 ```
+
  3、 passwall依赖
+ 
  ```bash
  src-git small https://github.com/kenzok8/small
  ```
@@ -31,7 +38,7 @@
 - luci-theme-argon-dark-new------------------适配19.07与18.06的主题
 - luci-app-eqos            ------------------依IP地址限速
 - luci-app-gost            ------------------隐蔽的https代理
-- luci-app-koolproxyR      ------------------去广告 
+- luci-app-adguardhome     ------------------去广告 
 - luci-app-smartdns        ------------------smartdns防污染
 - luci-app-passwall        ------------------Lienol大神 
 - luci-theme-argon_new     ------------------适配19.07与18.06的主题

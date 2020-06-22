@@ -28,8 +28,7 @@ o.description = translate("Download Rule")
 o.inputstyle = "reload"
 o.write = function()
   uci:commit("clash")
-  luci.sys.call("bash /usr/share/clash/rule.sh >>/tmp/clash.txt >/dev/null 2>&1 &")
-  HTTP.redirect(DISP.build_url("admin", "services", "clash", "create"))
+  luci.sys.call("bash /usr/share/clash/rule.sh >>/usr/share/clash/clash.txt >/dev/null 2>&1 &")
 end
 
 local rule = "/usr/share/clash/custom_rule.yaml"
@@ -61,6 +60,7 @@ s.anonymous = true
 cc = s:option(Flag, "create", translate("Enable Create"))
 cc.default = 1
 cc.description = translate("Enable to create configuration")
+
 
 o = s:option(Value, "create_tag")
 o.title = translate("Config Name")
@@ -116,7 +116,7 @@ o.inputtitle = translate("Save & Apply")
 o.inputstyle = "apply"
 o.write = function()
   krk.uci:commit("clash")
-  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "clash", "create"))
+  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "clash", "config", "create"))
 end
 
 o = b:option(Button,"Delete_Severs")
@@ -125,7 +125,7 @@ o.inputstyle = "reset"
 o.write = function()
   krk.uci:delete_all("clash", "servers", function(s) return true end)
   krk.uci:commit("clash")
-  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "clash", "create"))
+  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "clash", "config", "create"))
 end
 
 o = b:option(Button,"Delete_Provider")
@@ -134,7 +134,7 @@ o.inputstyle = "reset"
 o.write = function()
   krk.uci:delete_all("clash", "provider", function(s) return true end)
   krk.uci:commit("clash")
-  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "clash", "create"))
+  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "clash", "config", "create"))
 end
 
 
@@ -144,7 +144,7 @@ o.inputstyle = "reset"
 o.write = function()
   krk.uci:delete_all("clash", "groups", function(s) return true end)
   krk.uci:commit("clash")
-  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "clash", "create"))
+  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "clash", "config", "create"))
 end
 
 

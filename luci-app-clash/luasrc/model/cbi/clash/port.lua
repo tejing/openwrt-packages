@@ -75,6 +75,7 @@ o = s:option(ListValue, "p_mode", translate("Proxy Mode"))
 o.description = translate("Choose proxy mode")
 o:value("Rule", translate("RULE"))
 o:value("Global", translate("GLOBAL"))
+o:value("Script", translate("SCRIPT"))
 o:value("Direct", translate("DIRECT"))
 o.default = "Rule"
 
@@ -87,7 +88,7 @@ o:value("error", "error")
 o:value("debug", "debug")
 
 o = s:option(Button, "Apply")
-o.title = translate("Save & Apply")
+o.title = luci.util.pcdata(translate("Save & Apply"))
 o.inputtitle = translate("Save & Apply")
 o.inputstyle = "apply"
 o.write = function()
