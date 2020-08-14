@@ -82,11 +82,14 @@ local function start()
             elseif type == "Trojan" then
                 config = require("luci.model.cbi.passwall.server.api.trojan").gen_config(user)
                 bin = ln_start("/usr/sbin/trojan", "trojan", "-c " .. config_file)
+            elseif type == "Trojan-Plus" then
+                config = require("luci.model.cbi.passwall.server.api.trojan").gen_config(user)
+                bin = ln_start("/usr/sbin/trojan-plus", "trojan-plus", "-c " .. config_file)
             elseif type == "Trojan-Go" then
                 config = require("luci.model.cbi.passwall.server.api.trojan").gen_config(user)
                 bin = ln_start(_api.get_trojan_go_path(), "trojan-go", "-config " .. config_file)
             elseif type == "Brook" then
-                local brook_protocol = user.brook_protocol
+                local brook_protocol = user.protocol
                 local brook_password = user.password
                 bin = ln_start(_api.get_brook_path(), "brook_" .. id, string.format("%s -l :%s -p %s", brook_protocol, port, brook_password))
             end
