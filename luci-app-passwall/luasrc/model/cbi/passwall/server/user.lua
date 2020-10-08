@@ -2,6 +2,15 @@ local d = require "luci.dispatcher"
 local uci = require"luci.model.uci".cursor()
 local api = require "luci.model.cbi.passwall.api.api"
 
+local ss_encrypt_method_list = {
+    "rc4-md5", "aes-128-cfb", "aes-192-cfb", "aes-256-cfb", "aes-128-ctr",
+    "aes-192-ctr", "aes-256-ctr", "bf-cfb", "camellia-128-cfb",
+    "camellia-192-cfb", "camellia-256-cfb", "salsa20", "chacha20",
+    "chacha20-ietf", -- aead
+    "aes-128-gcm", "aes-192-gcm", "aes-256-gcm", "chacha20-ietf-poly1305",
+    "xchacha20-ietf-poly1305"
+}
+
 local ssr_encrypt_method_list = {
     "none", "table", "rc2-cfb", "rc4", "rc4-md5", "rc4-md5-6", "aes-128-cfb",
     "aes-192-cfb", "aes-256-cfb", "aes-128-ctr", "aes-192-ctr", "aes-256-ctr",
@@ -60,6 +69,12 @@ remarks.default = translate("Remarks")
 remarks.rmempty = false
 
 type = s:option(ListValue, "type", translate("Type"))
+if api.is_finded("microsocks") then
+    type:value("Socks", translate("Socks"))
+end
+if api.is_finded("ss-server") then
+    type:value("SS", translate("Shadowsocks"))
+end
 if api.is_finded("ssr-server") then
     type:value("SSR", translate("ShadowsocksR"))
 end
@@ -87,11 +102,12 @@ protocol:value("vless", "VLESS")
 protocol:value("http", "HTTP")
 protocol:value("socks", "Socks")
 protocol:value("shadowsocks", "Shadowsocks")
+protocol:value("trojan", "Trojan")
 protocol:value("mtproto", "MTProto")
 protocol:depends("type", "V2ray")
 
 -- Brook协议
-brook_protocol = s:option(ListValue, "brook_protocol", translate("Brook Protocol"))
+brook_protocol = s:option(ListValue, "brook_protocol", translate("Protocol"))
 brook_protocol:value("server", "Brook")
 brook_protocol:value("wsserver", "WebSocket")
 brook_protocol:depends("type", "Brook")
@@ -110,11 +126,30 @@ port.datatype = "port"
 port.rmempty = false
 
 username = s:option(Value, "username", translate("Username"))
-username:depends("protocol", "http")
-username:depends("protocol", "socks")
+username.validate = function(self, value, t)
+    if value then
+        if not password:formvalue(t) or password:formvalue(t) == "" then
+            return nil, translate("Username and Password must be used together!")
+        end
+    end
+    return value
+end
+username:depends("type", "Socks")
+username:depends({ type = "V2ray", protocol = "http" })
+username:depends({ type = "V2ray", protocol = "socks" })
 
 password = s:option(Value, "password", translate("Password"))
 password.password = true
+password.validate = function(self, value, t)
+    if value then
+        if (protocol:formvalue(t) == "http" or protocol:formvalue(t) == "socks" or type:formvalue(t) == "Socks") and (not username:formvalue(t) or username:formvalue(t) == "") then
+            return nil, translate("Username and Password must be used together!")
+        end
+    end
+    return value
+end
+password:depends("type", "Socks")
+password:depends("type", "SS")
 password:depends("type", "SSR")
 password:depends("type", "Brook")
 password:depends("type", "Trojan")
@@ -122,11 +157,30 @@ password:depends("type", "Trojan-Plus")
 password:depends({ type = "V2ray", protocol = "http" })
 password:depends({ type = "V2ray", protocol = "socks" })
 password:depends({ type = "V2ray", protocol = "shadowsocks" })
-password:depends({ type = "V2ray", protocol = "mtproto" })
+
+mtproto_password = s:option(Value, "mtproto_password", translate("Password"), translate("The MTProto protocol must be 32 characters and can only contain characters from 0 to 9 and a to f."))
+mtproto_password:depends({ type = "V2ray", protocol = "mtproto" })
+mtproto_password.default = arg[1]
+function mtproto_password.cfgvalue(self, section)
+	return m:get(section, "password")
+end
+function mtproto_password.write(self, section, value)
+	m:set(section, "password", value)
+end
 
 decryption = s:option(Value, "decryption", translate("Encrypt Method"))
 decryption.default = "none"
-decryption:depends("protocol", "vless")
+decryption:depends({ type = "V2ray", protocol = "vless" })
+
+ss_encrypt_method = s:option(ListValue, "ss_encrypt_method", translate("Encrypt Method"))
+for a, t in ipairs(ss_encrypt_method_list) do ss_encrypt_method:value(t) end
+ss_encrypt_method:depends("type", "SS")
+function ss_encrypt_method.cfgvalue(self, section)
+	return m:get(section, "method")
+end
+function ss_encrypt_method.write(self, section, value)
+	m:set(section, "method", value)
+end
 
 ssr_encrypt_method = s:option(ListValue, "ssr_encrypt_method", translate("Encrypt Method"))
 for a, t in ipairs(ssr_encrypt_method_list) do ssr_encrypt_method:value(t) end
@@ -140,7 +194,7 @@ end
 
 v_ss_encrypt_method = s:option(ListValue, "v_ss_encrypt_method", translate("Encrypt Method"))
 for a, t in ipairs(v_ss_encrypt_method_list) do v_ss_encrypt_method:value(t) end
-v_ss_encrypt_method:depends("protocol", "shadowsocks")
+v_ss_encrypt_method:depends({ type = "V2ray", protocol = "shadowsocks" })
 function v_ss_encrypt_method.cfgvalue(self, section)
 	return m:get(section, "method")
 end
@@ -153,17 +207,7 @@ ss_network.default = "tcp,udp"
 ss_network:value("tcp", "TCP")
 ss_network:value("udp", "UDP")
 ss_network:value("tcp,udp", "TCP,UDP")
-ss_network:depends("protocol", "shadowsocks")
-
-ss_ota = s:option(Flag, "ss_ota", translate("OTA"), translate("When OTA is enabled, a connection that is not OTA enabled is rejected. This option is invalid when using AEAD encryption."))
-ss_ota.default = "0"
-ss_ota:depends("protocol", "shadowsocks")
-function ss_ota.cfgvalue(self, section)
-	return m:get(section, "ota")
-end
-function ss_ota.write(self, section, value)
-	m:set(section, "ota", value)
-end
+ss_network:depends({ type = "V2ray", protocol = "shadowsocks" })
 
 ssr_protocol = s:option(ListValue, "ssr_protocol", translate("Protocol"))
 for a, t in ipairs(ssr_protocol_list) do ssr_protocol:value(t) end
@@ -188,11 +232,13 @@ obfs_param:depends("type", "SSR")
 timeout = s:option(Value, "timeout", translate("Connection Timeout"))
 timeout.datatype = "uinteger"
 timeout.default = 300
+timeout:depends("type", "SS")
 timeout:depends("type", "SSR")
 
 tcp_fast_open = s:option(ListValue, "tcp_fast_open", translate("TCP Fast Open"), translate("Need node support required"))
 tcp_fast_open:value("false")
 tcp_fast_open:value("true")
+tcp_fast_open:depends("type", "SS")
 tcp_fast_open:depends("type", "SSR")
 tcp_fast_open:depends("type", "Trojan")
 tcp_fast_open:depends("type", "Trojan-Plus")
@@ -203,12 +249,13 @@ udp_forward.default = "1"
 udp_forward.rmempty = false
 udp_forward:depends("type", "SSR")
 
-uuid = s:option(DynamicList, "uuid", translate("ID"))
+uuid = s:option(DynamicList, "uuid", translate("ID") .. "/" .. translate("Password"))
 for i = 1, 3 do
-    uuid:value(api.gen_uuid())
+    uuid:value(api.gen_uuid(1))
 end
 uuid:depends({ type = "V2ray", protocol = "vmess" })
 uuid:depends({ type = "V2ray", protocol = "vless" })
+uuid:depends({ type = "V2ray", protocol = "trojan" })
 uuid:depends("type", "Trojan-Go")
 
 alter_id = s:option(Value, "alter_id", translate("Alter ID"))
@@ -220,16 +267,19 @@ level.default = 1
 level:depends({ type = "V2ray", protocol = "vmess" })
 level:depends({ type = "V2ray", protocol = "vless" })
 level:depends({ type = "V2ray", protocol = "shadowsocks" })
+level:depends({ type = "V2ray", protocol = "trojan" })
 level:depends({ type = "V2ray", protocol = "mtproto" })
 
-stream_security = s:option(ListValue, "stream_security", translate("Transport Layer Encryption"), translate('Whether or not transport layer encryption is enabled, the supported options are "none" for unencrypted and "TLS" for using TLS.'))
+stream_security = s:option(ListValue, "stream_security", translate("Transport Layer Encryption"), translate('Whether or not transport layer encryption is enabled, "none" for unencrypted, "tls" for using TLS, "xtls" for using XTLS.'))
 stream_security:value("none", "none")
 stream_security:value("tls", "tls")
+stream_security:value("xtls", "xtls")
 stream_security.default = "none"
 stream_security:depends({ type = "V2ray", protocol = "vmess" })
 stream_security:depends({ type = "V2ray", protocol = "vless" })
 stream_security:depends({ type = "V2ray", protocol = "socks" })
 stream_security:depends({ type = "V2ray", protocol = "shadowsocks" })
+stream_security:depends({ type = "V2ray", protocol = "trojan" })
 stream_security:depends("type", "Trojan")
 stream_security:depends("type", "Trojan-Plus")
 stream_security:depends("type", "Trojan-Go")
@@ -239,24 +289,37 @@ stream_security.validate = function(self, value)
     end
     return value
 end
+
+flow = s:option(Value, "flow", translate("flow"))
+flow.default = "xtls-rprx-origin"
+flow:value("xtls-rprx-origin")
+flow:value("xtls-rprx-origin-udp443")
+flow:depends("stream_security", "xtls")
+
 -- [[ TLS部分 ]] --
 
 tls_sessionTicket = s:option(Flag, "tls_sessionTicket", translate("Session Ticket"))
 tls_sessionTicket.default = "0"
-tls_sessionTicket:depends("stream_security", "tls")
+tls_sessionTicket:depends({ type = "Trojan", stream_security = "tls" })
+tls_sessionTicket:depends({ type = "Trojan-Plus", stream_security = "tls" })
+tls_sessionTicket:depends({ type = "Trojan-Go", stream_security = "tls" })
 
 tls_serverName = s:option(Value, "tls_serverName", translate("Domain"))
 tls_serverName:depends("stream_security", "tls")
+tls_serverName:depends("stream_security", "xtls")
 
 tls_allowInsecure = s:option(Flag, "tls_allowInsecure", translate("allowInsecure"), translate("Whether unsafe connections are allowed. When checked, Certificate validation will be skipped."))
 tls_allowInsecure.default = "0"
 tls_allowInsecure:depends("stream_security", "tls")
+tls_allowInsecure:depends("stream_security", "xtls")
 
 tls_certificateFile = s:option(Value, "tls_certificateFile", translate("Public key absolute path"), translate("as:") .. "/etc/ssl/fullchain.pem")
 tls_certificateFile:depends("stream_security", "tls")
+tls_certificateFile:depends("stream_security", "xtls")
 
 tls_keyFile = s:option(Value, "tls_keyFile", translate("Private key absolute path"), translate("as:") .. "/etc/ssl/private.key")
 tls_keyFile:depends("stream_security", "tls")
+tls_keyFile:depends("stream_security", "xtls")
 
 transport = s:option(ListValue, "transport", translate("Transport"))
 transport:value("tcp", "TCP")
@@ -269,6 +332,7 @@ transport:depends({ type = "V2ray", protocol = "vmess" })
 transport:depends({ type = "V2ray", protocol = "vless" })
 transport:depends({ type = "V2ray", protocol = "socks" })
 transport:depends({ type = "V2ray", protocol = "shadowsocks" })
+transport:depends({ type = "V2ray", protocol = "trojan" })
 
 trojan_transport = s:option(ListValue, "trojan_transport", translate("Transport"))
 trojan_transport:value("original", "Original")
@@ -404,15 +468,14 @@ quic_guise:depends("transport", "quic")
 fallback = s:option(Flag, "fallback", translate("Fallback"))
 fallback:depends({ type = "V2ray", protocol = "vless", transport = "tcp", stream_security = "tls" })
 
-fallback_addr = s:option(Value, "fallback_addr", "Fallback" .. translate("Address (Support Domain Name)"))
-fallback_addr:depends("fallback", "1")
+fallback_alpn = s:option(Value, "fallback_alpn", "Fallback alpn")
+fallback_alpn:depends("fallback", "1")
 
-fallback_port = s:option(Value, "fallback_port", "Fallback" .. translate("Port"))
-fallback_port.datatype = "port"
-fallback_port:depends("fallback", "1")
+fallback_path = s:option(Value, "fallback_path", "Fallback path")
+fallback_path:depends("fallback", "1")
 
-fallback_unix = s:option(Value, "fallback_unix", "Fallback UNIX domain socket", translate("UNIX domain socket, absolute path, you can add @ at the beginning to represent abstract, and it is empty by default. If this value is filled in, addr and port will be ignored."))
-fallback_unix:depends("fallback", "1")
+fallback_dest = s:option(Value, "fallback_dest", "Fallback dest")
+fallback_dest:depends("fallback", "1")
 
 fallback_xver = s:option(Value, "fallback_xver", "Fallback xver")
 fallback_xver.default = 0
