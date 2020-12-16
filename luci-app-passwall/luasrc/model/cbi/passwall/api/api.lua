@@ -15,6 +15,32 @@ command_timeout = 300
 LEDE_BOARD = nil
 DISTRIB_TARGET = nil
 
+function is_exist(table, value)
+    for index, k in ipairs(table) do
+        if k == value then
+            return true
+        end
+    end
+    return false
+end
+
+function get_args(arg, myarg)
+    local var = {}
+    for i, arg_k in pairs(arg) do
+        if i > 0 then
+            if is_exist(myarg, arg_k) == true then
+                local v = arg[i + 1]
+                if v then
+                    if is_exist(myarg, v) == false then
+                        var[arg_k] = v
+                    end
+                end
+            end
+        end
+    end
+    return var
+end
+
 function get_valid_nodes()
     local nodes = {}
     uci:foreach(appname, "nodes", function(e)
@@ -40,6 +66,22 @@ function get_valid_nodes()
         end
     end)
     return nodes
+end
+
+function get_full_node_remarks(n)
+    local remarks = ""
+    if n then
+        if n.protocol and (n.protocol == "_balancing" or n.protocol == "_shunt") then
+            remarks = "%s：[%s] " % {i18n.translatef(n.type .. n.protocol), n.remarks}
+        else
+            if n.use_kcp and n.use_kcp == "1" then
+                remarks = "%s+%s：[%s] %s" % {n.type, "Kcptun", n.remarks, n.address}
+            else
+                remarks = "%s：[%s] %s:%s" % {n.type, n.remarks, n.address, n.port}
+            end
+        end
+    end
+    return remarks
 end
 
 function gen_uuid(format)
@@ -79,7 +121,7 @@ function get_customed_path(e)
 end
 
 function is_finded(e)
-    return luci.sys.exec('type -t -p "%s/%s" -p "/usr/bin/xray/%s" -p "/usr/bin/v2ray/%s" "%s"' % {get_customed_path(e), e, e, e, e}) ~= "" and true or false
+    return luci.sys.exec('type -t -p "%s/%s" "%s"' % {get_customed_path(e), e, e}) ~= "" and true or false
 end
 
 function get_xray_path()
@@ -87,20 +129,11 @@ function get_xray_path()
     return path
 end
 
-function get_xray_file_path()
-    local path = get_xray_path()
-    if path ~= "" then
-        path = path .. "/xray"
-        return path:gsub("//", "/")
-    end
-    return ""
-end
-
 function get_xray_version(file)
-    if file == nil then file = get_xray_file_path() end
+    if file == nil then file = get_xray_path() end
     chmod_755(file)
     if fs.access(file) then
-        if file == get_xray_file_path() then
+        if file == get_xray_path() then
             local md5 = sys.exec("echo -n $(md5sum " .. file .. " | awk '{print $1}')")
             if fs.access("/tmp/psw_" .. md5) then
                 return sys.exec("cat /tmp/psw_" .. md5)
@@ -121,20 +154,11 @@ function get_v2ray_path()
     return path
 end
 
-function get_v2ray_file_path()
-    local path = get_v2ray_path()
-    if path ~= "" then
-        path = path .. "/v2ray"
-        return path:gsub("//", "/")
-    end
-    return ""
-end
-
 function get_v2ray_version(file)
-    if file == nil then file = get_v2ray_file_path() end
+    if file == nil then file = get_v2ray_path() end
     chmod_755(file)
     if fs.access(file) then
-        if file == get_v2ray_file_path() then
+        if file == get_v2ray_path() then
             local md5 = sys.exec("echo -n $(md5sum " .. file .. " | awk '{print $1}')")
             if fs.access("/tmp/psw_" .. md5) then
                 return sys.exec("cat /tmp/psw_" .. md5)

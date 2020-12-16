@@ -1,4 +1,5 @@
 module("luci.model.cbi.passwall.api.gen_xray", package.seeall)
+local api = require "luci.model.cbi.passwall.api.api"
 local ucursor = require"luci.model.uci".cursor()
 local sys = require "luci.sys"
 local json = require "luci.jsonc"
@@ -7,11 +8,17 @@ local inbounds = {}
 local outbounds = {}
 local routing = nil
 
-local node_section = arg[1] or "nil"
-local proto = arg[2]
-local redir_port = arg[3]
-local socks_proxy_port = arg[4]
-local node = ucursor:get_all(appname, node_section)
+local myarg = {
+    "-node", "-proto", "-redir_port", "-socks_proxy_port", "-loglevel"
+}
+
+local var = api.get_args(arg, myarg)
+
+local node_section = var["-node"]
+local proto = var["-proto"]
+local redir_port = var["-redir_port"]
+local socks_proxy_port = var["-socks_proxy_port"]
+local loglevel = var["-loglevel"] or "warning"
 local network = proto
 local new_port
 
@@ -31,12 +38,12 @@ function gen_outbound(node, tag, relay_port)
         if tag == nil then
             tag = node_id
         end
-        if node.type ~= "Xray" then
+        if node.type ~= "Xray" and node.type ~= "V2ray" then
             if node.type == "Socks" then
                 node.protocol = "socks"
                 node.transport = "tcp"
             else
-                local node_type = (proto and proto ~= "nil") and proto or "socks"
+                local node_type = proto or "socks"
                 new_port = get_new_port()
                 node.port = new_port
                 sys.call(string.format('/usr/share/%s/app.sh run_socks "%s" "%s" "%s" "%s" "%s" "%s" "%s" "%s"> /dev/null', 
@@ -56,26 +63,26 @@ function gen_outbound(node, tag, relay_port)
                 node.address = "127.0.0.1"
             end
             node.stream_security = "none"
-        end
-
-        if node.tls and node.tls == "1" then
-            node.stream_security = "tls"
-            if node.xtls and node.xtls == "1" then
-                node.stream_security = "xtls"
+        else
+            if node.tls and node.tls == "1" then
+                node.stream_security = "tls"
+                if node.xtls and node.xtls == "1" then
+                    node.stream_security = "xtls"
+                end
             end
-        end
-
-        if node.transport == "mkcp" or node.transport == "quic" then
-            node.stream_security = "none"
+    
+            if node.transport == "mkcp" or node.transport == "quic" then
+                node.stream_security = "none"
+            end
         end
 
         result = {
             tag = tag,
             protocol = node.protocol,
-            mux = {
+            mux = (node.stream_security ~= "xtls") and {
                 enabled = (node.mux == "1") and true or false,
                 concurrency = (node.mux_concurrency) and tonumber(node.mux_concurrency) or 8
-            },
+            } or nil,
             -- 底层传输配置
             streamSettings = (node.protocol == "vmess" or node.protocol == "vless" or node.protocol == "socks" or node.protocol == "shadowsocks" or node.protocol == "trojan") and {
                 network = node.transport,
@@ -159,8 +166,9 @@ function gen_outbound(node, tag, relay_port)
     return result
 end
 
-if node then
-    if socks_proxy_port ~= "nil" then
+if node_section then
+    local node = ucursor:get_all(appname, node_section)
+    if socks_proxy_port then
         table.insert(inbounds, {
             listen = "0.0.0.0",
             port = tonumber(socks_proxy_port),
@@ -170,7 +178,7 @@ if node then
         network = "tcp,udp"
     end
 
-    if redir_port ~= "nil" then
+    if redir_port then
         table.insert(inbounds, {
             port = tonumber(redir_port),
             protocol = "dokodemo-door",
@@ -272,7 +280,10 @@ if node then
             end
         end
 
-        routing = {domainStrategy = "IPOnDemand", rules = rules}
+        routing = {
+            domainStrategy = node.domainStrategy or "AsIs",
+            rules = rules
+        }
 
     elseif node.protocol == "_balancing" then
         if node.balancing_node then
@@ -284,7 +295,7 @@ if node then
                 if outbound then table.insert(outbounds, outbound) end
             end
             routing = {
-                domainStrategy = "IPOnDemand",
+                domainStrategy = node.domainStrategy or "AsIs",
                 balancers = {{tag = "balancer", selector = nodes}},
                 rules = {
                     {type = "field", network = "tcp,udp", balancerTag = "balancer"}
@@ -302,7 +313,7 @@ if node then
     local xray = {
         log = {
             -- error = string.format("/var/etc/passwall/%s.log", node[".name"]),
-            loglevel = "warning"
+            loglevel = loglevel
         },
         -- 传入连接
         inbounds = inbounds,
