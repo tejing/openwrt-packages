@@ -11,8 +11,8 @@ log = {
 loglevel = "warning"
 },
 -- 传入连接
-inbound = (local_port ~= "0" or server.local_port) and {
-	port = tonumber(local_port) or tonumber(server.local_port),
+inbound = (local_port ~= "0") and {
+	port = tonumber(local_port),
 	protocol = "dokodemo-door",
 	settings = {
 		network = proto,
@@ -90,10 +90,10 @@ outbound = {
 			},
 			seed = server.seed or nil
 		} or nil,
-		wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host) and {
+		wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host or server.tls_host) and {
 			path = server.ws_path,
-			headers = (server.ws_host) and {
-				Host = server.ws_host
+			headers = (server.ws_host or server.tls_host) and {
+				Host = server.ws_host or server.tls_host
 			} or nil,
 		} or nil,
 		httpSettings = (server.transport == "h2") and {
