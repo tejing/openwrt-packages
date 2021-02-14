@@ -1,5 +1,6 @@
 local fs = require "nixio.fs"
-local appname = "passwall"
+local api = require "luci.model.cbi.passwall.api.api"
+local appname = api.appname
 
 m = Map(appname)
 m.apply_on_parse=true
@@ -44,7 +45,7 @@ o.validate = function(self, value)
     local ipmasks= {}
     string.gsub(value, '[^' .. "\r\n" .. ']+', function(w) table.insert(ipmasks, w) end)
     for index, ipmask in ipairs(ipmasks) do
-        if not datatypes.ipmask4(ipmask) then
+        if not ( datatypes.ipmask4(ipmask) or datatypes.ipmask6(ipmask) ) then
             return nil, ipmask .. " " .. translate("Not valid IP format, please re-enter!")
         end
     end
@@ -82,7 +83,7 @@ o.validate = function(self, value)
     local ipmasks= {}
     string.gsub(value, '[^' .. "\r\n" .. ']+', function(w) table.insert(ipmasks, w) end)
     for index, ipmask in ipairs(ipmasks) do
-        if not datatypes.ipmask4(ipmask) then
+        if not ( datatypes.ipmask4(ipmask) or datatypes.ipmask6(ipmask) ) then
             return nil, ipmask .. " " .. translate("Not valid IP format, please re-enter!")
         end
     end
